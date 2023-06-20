@@ -1,0 +1,85 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: survey-result-database-pv
+  namespace: survey-result-service
+spec:
+  capacity:
+    storage: 4Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: standard
+  persistentVolumeReclaimPolicy: Retain
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - slavenode-db
+  hostPath:
+    path: /var/database/survey-result-service
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: survey-result-database-pvc
+  namespace: survey-result-service
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 4Gi
+  storageClassName: standard
+  volumeName: survey-result-database-pv
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: survey-result-database
+  namespace: survey-result-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: survey-result-database
+  template:
+    metadata:
+      labels:
+        app: survey-result-database
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: slavenode-db
+      containers:
+        - name: postgres
+          image: postgres:latest
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: pollify
+            - name: POSTGRES_PASSWORD
+              value: pollify
+          volumeMounts:
+            - name: survey-result-database
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: survey-result-database
+          persistentVolumeClaim:
+            claimName: survey-result-database-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: survey-result-database-service
+  namespace: survey-result-service
+spec:
+  selector:
+    app: survey-result-database
+  ports:
+    - protocol: TCP
+      port: 5432
+      targetPort: 5432
