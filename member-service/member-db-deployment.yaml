@@ -1,0 +1,84 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: member-database-pv
+  namespace: member-service
+spec:
+  capacity:
+    storage: 2Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - slavenode-db
+  storageClassName: standard
+  hostPath:
+    path: /var/database/member-service/
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: member-database-pvc
+  namespace: member-service
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+  storageClassName: standard
+  volumeName: member-database-pv
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: member-database
+  namespace: member-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: member-database
+  template:
+    metadata:
+      labels:
+        app: member-database
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: slavenode-db
+      containers:
+        - name: postgres
+          image: postgres:latest
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: pollify
+            - name: POSTGRES_PASSWORD
+              value: pollify
+          volumeMounts:
+            - name: member-database
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: member-database
+          persistentVolumeClaim:
+            claimName: member-database-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: member-database-service
+  namespace: member-service
+spec:
+  selector:
+    app: member-database
+  ports:
+    - protocol: TCP
+      port: 5432
+      targetPort: 5432
